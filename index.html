@@ -108,7 +108,7 @@ class Component extends DCLogic {
     var begin = function (x) {
       var first = x.tag === 'Erstbesuch';
       var s0 = CATALOG[x.svc] || null;
-      set({ cust: x.id, ret: !first, step: 1, q: '', svc: x.svc || '', price: s0 ? s0.min : 0,
+      set({ cust: x.id, ret: !first, step: 1, q: '', tab: 'o', d: {}, r: {}, e: {}, svc: x.svc || '', price: s0 ? s0.min : 0,
         a: first ? {} : RET_A, c: first ? {} : RET_C, sig1: !first, sig2: false });
     };
     var needle = q.trim().toLowerCase();
@@ -240,6 +240,46 @@ class Component extends DCLogic {
     var hasWarn = warnings.length > 0;
     if (!hasWarn) warnings.push({ text: 'Die Kundin hat nichts angegeben, was beim Färben zu beachten wäre.' });
 
+
+    var tab = st.tab || 'o';
+    var d = st.d || {}, r = st.r || {}, em = st.e || {};
+    var mkChips = function (store, key, id, labels, multi) {
+      var cur = store[id];
+      return labels.map(function (label) {
+        var on = multi ? (cur || []).indexOf(label) >= 0 : cur === label;
+        return { label: label, on: on, bg: on ? accent : '#FFFFFF', fg: on ? '#FFFFFF' : '#1C1F1E', bd: on ? accent : '#B9BFBA',
+          pick: function () {
+            var n = Object.assign({}, store);
+            if (multi) { var arr = (cur || []).slice(); var i = arr.indexOf(label); if (i >= 0) arr.splice(i, 1); else arr.push(label); n[id] = arr; }
+            else n[id] = on ? undefined : label;
+            var pt = {}; pt[key] = n; set(pt);
+          } };
+      });
+    };
+    var setIn = function (store, key, id) { return function (ev) { var n = Object.assign({}, store); n[id] = ev.target.value; var pt = {}; pt[key] = n; set(pt); }; };
+    var tabs = [['o', 'Übersicht'], ['d', 'Diagnose'], ['r', 'Rezeptur'], ['e', 'Empfehlung']].map(function (t) {
+      var on = tab === t[0];
+      return { label: t[1], on: on, bg: on ? '#1C1F1E' : '#FFFFFF', fg: on ? '#FFFFFF' : '#1C1F1E', bd: on ? '#1C1F1E' : '#B9BFBA', pick: function () { set({ tab: t[0] }); } };
+    });
+    var WEISS = ['0 %', '30 %', '50 %', '80 %', '100 %'];
+    var diagTop = [{ label: 'Naturton (Farbtiefe)', opts: mkChips(d, 'd', 'natur', ['2', '3', '4', '5', '6', '7', '8', '9', '10']) }];
+    var diagLeft = [
+      { label: 'Haarstruktur', opts: mkChips(d, 'd', 'struktur', ['Normal', 'Coloriert', 'Strapaziert', 'Umformung'], true) },
+      { label: 'Kopfhaut', opts: mkChips(d, 'd', 'kopfhaut', ['Unauffällig', 'Trocken', 'Fettig', 'Schuppig'], true) },
+      { label: 'Farbtyp', opts: mkChips(d, 'd', 'typ', ['Warm', 'Kühl']) }
+    ];
+    var diagRight = [
+      { label: 'Weißanteil Vorderkopf', opts: mkChips(d, 'd', 'weissV', WEISS) },
+      { label: 'Weißanteil Hinterkopf', opts: mkChips(d, 'd', 'weissH', WEISS) },
+      { label: 'Längen und Spitzen', opts: mkChips(d, 'd', 'laengen', ['Wie Ansatz', 'Heller', 'Dunkler', 'Ausgewaschen']) }
+    ];
+    var OX = ['1,9 %', '4 %', '6 %', '9 %', '12 %'];
+    var zones = [['ansatz', 'Ansatz'], ['mitte', 'Mittelteil'], ['spitzen', 'Spitzen']].map(function (z) {
+      return { fid: 'mix_' + z[0], name: z[1], mix: r['mix_' + z[0]] || '', onMix: setIn(r, 'r', 'mix_' + z[0]), oxOpts: mkChips(r, 'r', 'ox_' + z[0], OX) };
+    });
+    var timeOpts = mkChips(r, 'r', 'time', ['20 Min.', '30 Min.', '40 Min.', '50 Min.']);
+    var faceOpts = mkChips(em, 'e', 'face', ['Oval', 'Rund', 'Quadrat', 'Rechteck', 'Dreieck', 'Trapez', 'Raute']);
+    var staffOn = step === 8;
     var inForm = idx >= 0;
     var staffMode = step === 0 || step === 8 || step === 10;
     var sig1 = !!st.sig1, sig2 = !!st.sig2;
@@ -254,7 +294,15 @@ class Component extends DCLogic {
       newName: st.newName || '', newPhone: st.newPhone || '',
       onName: function (e) { set({ newName: e.target.value }); },
       onPhone: function (e) { set({ newPhone: e.target.value }); },
-      startNew: function () { set({ cust: 'new', ret: false, step: 1, svc: '', price: 0, a: {}, c: {}, sig1: false, sig2: false }); },
+      startNew: function () { set({ cust: 'new', ret: false, step: 1, tab: 'o', d: {}, r: {}, e: {}, svc: '', price: 0, a: {}, c: {}, sig1: false, sig2: false }); },
+      tabs: tabs, isTabO: staffOn && tab === 'o', isTabD: staffOn && tab === 'd', isTabR: staffOn && tab === 'r', isTabE: staffOn && tab === 'e',
+      diagTop: diagTop, diagLeft: diagLeft, diagRight: diagRight,
+      dGoal: d.goal || '', onDGoal: setIn(d, 'd', 'goal'),
+      zones: zones, timeOpts: timeOpts, rAfter: r.after || '', onRAfter: setIn(r, 'r', 'after'),
+      canCopy: ret, noCopy: !ret,
+      copyLast: function () { set({ r: { mix_ansatz: 'Koleston 7/0 + 7/1, je 30 g', ox_ansatz: '6 %', mix_mitte: 'Color Touch 8/81, 30 g', ox_mitte: '1,9 %', mix_spitzen: 'Color Touch 8/81, 20 g', ox_spitzen: '1,9 %', time: '30 Min.', after: 'Plex-Pflege und saure Spülung' } }); },
+      faceOpts: faceOpts,
+      eCut: em.cut || '', onECut: setIn(em, 'e', 'cut'), eColor: em.color || '', onEColor: setIn(em, 'e', 'color'), eCare: em.care || '', onECare: setIn(em, 'e', 'care'),
       svcOpts: svcOpts,
       svcHint: svc ? ('Dauer etwa ' + svc.dur + ' · Katalogpreis ' + svc.min + ' bis ' + svc.max + ' €') : 'Bitte zuerst eine Leistung wählen.', isQ: (step >= 2 && step <= 5) || step === 11, isConsent: step === 6,
       welcomeHead: ret ? 'Schön, Sie wiederzusehen, ' + cust.first + '.' : 'Willkommen, ' + cust.first + '.',
@@ -299,7 +347,8 @@ class Component extends DCLogic {
   var comp = new Component();
   comp.props = { accent: ACCENT };
 
-  var reg = [];
+  var reg = [], regI = [];
+  function hi(fn) { regI.push(fn); return ' data-j="' + (regI.length - 1) + '"'; }
   function h(fn) { reg.push(fn); return ' data-h="' + (reg.length - 1) + '"'; }
   function e(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   var SIG = '<svg role="img" aria-label="Unterschrift" width="220" height="64" viewBox="0 0 220 64" fill="none" stroke="#1C1F1E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 44c12-22 22-34 28-30 7 5-12 34-4 36 8 2 16-26 24-24 6 2-4 20 4 20 9 0 12-18 20-18 6 0 2 16 10 16 10 0 14-22 26-24 10-2 6 22 18 22 14 0 22-14 40-16 12-1 24 4 38 2"></path></svg>';
@@ -369,14 +418,41 @@ class Component extends DCLogic {
       o += '<div class="center"><div class="dot" style="background:' + a + '">' + CHECK + '</div><h1>Vielen Dank, ' + e(v.custFirst) + '.</h1><p class="muted" style="max-width:520px;margin:0">Bitte geben Sie das iPad jetzt Ihrem Friseur zurück. Ihre Antworten sieht nur das Team.</p><button class="btn ghost"' + h(v.toStaff) + '>Friseur: mit PIN öffnen</button></div>';
     }
 
+    function qs(list) {
+      return list.map(function (q) { return '<div class="col" style="gap:8px"><div class="small" style="font-weight:600">' + e(q.label) + '</div><div class="row" style="flex-wrap:wrap;gap:8px">' + q.opts.map(function (x) { return chip(x, 'sm'); }).join('') + '</div></div>'; }).join('');
+    }
+    function fld(id, label, val, fn, ph) {
+      return '<div class="col" style="gap:8px"><label for="' + id + '" class="small" style="font-weight:600">' + label + '</label><input id="' + id + '" class="field" type="text" autocomplete="off" placeholder="' + e(ph) + '" value="' + e(val) + '"' + hi(fn) + '></div>';
+    }
     if (v.isStaff) {
-      o += '<div class="two"><div class="col" style="gap:14px"><div><h1 style="font-size:28px">' + e(v.custName) + '</h1><p class="muted small" style="margin-top:4px">' + e(v.custService) + ' · heute, ' + e(v.custTime) + '</p></div><div class="card" style="padding:4px 20px">';
-      v.summary.forEach(function (r) { o += '<div class="kv small"><div class="k">' + e(r.k) + '</div><div class="v">' + e(r.v) + '</div></div>'; });
-      o += '</div></div><div class="col" style="gap:14px"><div class="col" style="background:' + v.warnBg + ';border:1.5px solid ' + v.warnBd + ';border-radius:14px;padding:16px 20px;gap:8px"><div class="row" style="gap:10px;font-weight:600;color:' + v.warnFg + '">' + WARN + '<div>' + v.warnTitle + '</div></div>';
-      v.warnings.forEach(function (w) { o += '<div class="small">' + e(w.text) + '</div>'; });
-      o += '</div><div class="card col" style="padding:18px 20px;gap:14px"><div style="font-weight:600">Leistungsvereinbarung</div><div class="row" style="flex-wrap:wrap;gap:8px">' + v.svcOpts.map(function (x) { return chip(x, 'sm'); }).join('') + '</div><div class="muted small">' + e(v.svcHint) + '</div>';
-      o += '<div class="row" style="gap:14px"><button' + h(v.priceDown) + ' aria-label="Preis senken" style="width:48px;height:48px;border-radius:24px;border:1.5px solid #1C1F1E;background:#fff;font-size:24px;line-height:1;color:#1C1F1E">−</button><div class="big" style="width:130px;text-align:center">' + v.price + ' €</div><button' + h(v.priceUp) + ' aria-label="Preis erhöhen" style="width:48px;height:48px;border-radius:24px;border:1.5px solid #1C1F1E;background:#fff;font-size:24px;line-height:1;color:#1C1F1E">+</button></div>';
-      o += '<button class="btn"' + h(v.toAgree) + ' style="background:' + a + '">Kundin bestätigen lassen</button></div></div></div>';
+      o += '<div class="col" style="gap:14px"><div class="row" style="align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap"><div><h1 style="font-size:28px">' + e(v.custName) + '</h1><p class="muted small" style="margin-top:4px">' + e(v.custService) + ' · heute, ' + e(v.custTime) + '</p></div><div class="row" style="gap:8px;flex-wrap:wrap">';
+      v.tabs.forEach(function (t) { o += '<button' + h(t.pick) + ' aria-pressed="' + (t.on ? 'true' : 'false') + '" style="min-height:44px;padding:0 18px;border-radius:12px;font-size:15px;font-weight:600;background:' + t.bg + ';color:' + t.fg + ';border:1.5px solid ' + t.bd + '">' + t.label + '</button>'; });
+      o += '</div></div>';
+      if (v.isTabO) {
+        o += '<div class="two"><div><div class="card" style="padding:4px 20px">';
+        v.summary.forEach(function (r) { o += '<div class="kv small"><div class="k">' + e(r.k) + '</div><div class="v">' + e(r.v) + '</div></div>'; });
+        o += '</div></div><div class="col" style="gap:14px"><div class="col" style="background:' + v.warnBg + ';border:1.5px solid ' + v.warnBd + ';border-radius:14px;padding:16px 20px;gap:8px"><div class="row" style="gap:10px;font-weight:600;color:' + v.warnFg + '">' + WARN + '<div>' + v.warnTitle + '</div></div>';
+        v.warnings.forEach(function (w) { o += '<div class="small">' + e(w.text) + '</div>'; });
+        o += '</div><div class="card col" style="padding:18px 20px;gap:14px"><div style="font-weight:600">Leistungsvereinbarung</div><div class="row" style="flex-wrap:wrap;gap:8px">' + v.svcOpts.map(function (x) { return chip(x, 'sm'); }).join('') + '</div><div class="muted small">' + e(v.svcHint) + '</div>';
+        o += '<div class="row" style="gap:14px"><button' + h(v.priceDown) + ' aria-label="Preis senken" style="width:48px;height:48px;border-radius:24px;border:1.5px solid #1C1F1E;background:#fff;font-size:24px;line-height:1;color:#1C1F1E">−</button><div class="big" style="width:130px;text-align:center">' + v.price + ' €</div><button' + h(v.priceUp) + ' aria-label="Preis erhöhen" style="width:48px;height:48px;border-radius:24px;border:1.5px solid #1C1F1E;background:#fff;font-size:24px;line-height:1;color:#1C1F1E">+</button></div>';
+        o += '<button class="btn"' + h(v.toAgree) + ' style="background:' + a + '">Kundin bestätigen lassen</button></div></div></div>';
+      }
+      if (v.isTabD) {
+        o += '<div class="col" style="gap:14px">' + qs(v.diagTop) + '<div class="two"><div class="col" style="gap:14px">' + qs(v.diagLeft) + '</div><div class="col" style="gap:14px">' + qs(v.diagRight) + '</div></div>' + fld('dGoal', 'Farbziel', v.dGoal, v.onDGoal, 'zum Beispiel: kühles Blond, Ansatz weich verlaufend') + '</div>';
+      }
+      if (v.isTabR) {
+        o += '<div class="col" style="gap:14px">';
+        if (v.canCopy) o += '<div class="card row" style="justify-content:space-between;gap:12px;padding:12px 20px;flex-wrap:wrap"><div class="muted small">Letzte Rezeptur vom 20.10.2026 vorhanden.</div><button' + h(v.copyLast) + ' style="min-height:44px;padding:0 20px;border-radius:22px;border:none;background:' + a + ';color:#fff;font-size:15px;font-weight:600">Vom letzten Mal übernehmen</button></div>';
+        else o += '<div class="muted small">Erster Besuch: Diese Rezeptur steht beim nächsten Mal zum Übernehmen bereit.</div>';
+        v.zones.forEach(function (z) {
+          o += '<div class="row" style="gap:12px;flex-wrap:wrap"><div class="small" style="width:84px;flex-shrink:0;font-weight:600">' + z.name + '</div><input id="' + z.fid + '" class="field" type="text" autocomplete="off" aria-label="' + z.name + '" placeholder="Farbe, Nuance und Menge" value="' + e(z.mix) + '"' + hi(z.onMix) + ' style="flex:1 1 240px;width:auto"><div class="row" style="gap:6px;flex-wrap:wrap">' + z.oxOpts.map(function (x) { return chip(x, 'sm'); }).join('') + '</div></div>';
+        });
+        o += '<div class="col" style="gap:8px"><div class="small" style="font-weight:600">Einwirkzeit</div><div class="row" style="flex-wrap:wrap;gap:8px">' + v.timeOpts.map(function (x) { return chip(x, 'sm'); }).join('') + '</div></div>' + fld('rAfter', 'Nachbehandlung', v.rAfter, v.onRAfter, 'zum Beispiel: Plex-Pflege, Glossing') + '</div>';
+      }
+      if (v.isTabE) {
+        o += '<div class="col" style="gap:14px"><div class="col" style="gap:8px"><div class="small" style="font-weight:600">Gesichtsform</div><div class="row" style="flex-wrap:wrap;gap:8px">' + v.faceOpts.map(function (x) { return chip(x, 'sm'); }).join('') + '</div></div>' + fld('eCut', 'Schnittempfehlung', v.eCut, v.onECut, 'zum Beispiel: Spitzen 3 cm, Stufen ab Kinn') + fld('eColor', 'Farbempfehlung', v.eColor, v.onEColor, 'zum Beispiel: Glossing alle 6 Wochen') + fld('eCare', 'Pflegeempfehlung', v.eCare, v.onECare, 'zum Beispiel: Plex-Kur, Silbershampoo') + '</div>';
+      }
+      o += '</div>';
     }
 
     if (v.isAgree) {
@@ -401,7 +477,7 @@ class Component extends DCLogic {
     var root = document.getElementById('app');
     var act = document.activeElement, fid = act && act.id, pos = null;
     try { if (fid && act.type !== 'tel') pos = act.selectionStart; } catch (x) {}
-    reg = [];
+    reg = []; regI = [];
     vals = comp.renderVals();
     root.innerHTML = view(vals);
     if (fid) { var el = document.getElementById(fid); if (el) { el.focus(); try { if (pos != null) el.setSelectionRange(pos, pos); } catch (x) {} } }
@@ -416,6 +492,8 @@ class Component extends DCLogic {
     document.addEventListener('input', function (ev) {
       var k = ev.target.getAttribute && ev.target.getAttribute('data-i');
       if (k && vals && vals[k]) vals[k]({ target: ev.target });
+      var j = ev.target.getAttribute && ev.target.getAttribute('data-j');
+      if (j != null && regI[+j]) regI[+j]({ target: ev.target });
     });
     paint();
   }
